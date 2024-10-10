@@ -1,0 +1,1 @@
+Создатель - lolz.live/hollywood
