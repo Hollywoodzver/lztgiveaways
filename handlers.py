@@ -14,6 +14,7 @@ class Form(StatesGroup):
 
 
 token = "Your Forum Token"
+secret = "your secret answer"
 
 market = Market(token=token, language="en")
 forum = Forum(token=token, language="en")
@@ -76,7 +77,7 @@ async def confirm_callback(callback_query: types.CallbackQuery, admin_ids):
         try:
             response = forum.threads.contests.money.create_by_time(post_body=body,prize_data_money=int(price), count_winners=1,
                                                                 length_value=date, length_option=date2, require_like_count=1,
-                                                                require_total_like_count=50, secret_answer="Your Secret Answer", title=title1)
+                                                                require_total_like_count=50, secret_answer=secret, title=title1)
             print(response.json())
             thread_id = response.json()["thread"]["links"]["permalink"]
             await callback_query.message.edit_text(f"Розыгрыш успешно создан\n{thread_id}")
@@ -108,4 +109,3 @@ def register_handlers(dp: Dispatcher, admin_ids):
                                 text="📄 Создать новый розыгрыш")
     dp.register_callback_query_handler(lambda callback_query: confirm_callback(callback_query, admin_ids),
                                        lambda c: c.data.startswith(('approve_', 'reject_')))
-    
