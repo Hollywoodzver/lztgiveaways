@@ -67,8 +67,10 @@ async def next_give(message: types.Message, state: FSMContext):
                    "authorization": f"Bearer {token}"}
         response = requests.get(url, headers=headers)
         global title1, body
+        global thread_tags
         title1 = response.json()['thread']['thread_title']
         body = response.json()['thread']['first_post']['post_body']
+        thread_tags = list(response.json()['thread']['thread_tags'].values())
 
 
 async def confirm_callback(callback_query: types.CallbackQuery, admin_ids):
@@ -77,7 +79,8 @@ async def confirm_callback(callback_query: types.CallbackQuery, admin_ids):
         try:
             response = forum.threads.contests.money.create_by_time(post_body=body,prize_data_money=int(price), count_winners=1,
                                                                 length_value=date, length_option=date2, require_like_count=1,
-                                                                require_total_like_count=50, secret_answer=secret, title=title1)
+                                                                require_total_like_count=50, secret_answer=secret, tags=thread_tags, title=title1)
+                                                                
             print(response.json())
             thread_id = response.json()["thread"]["links"]["permalink"]
             await callback_query.message.edit_text(f"Розыгрыш успешно создан\n{thread_id}")
@@ -109,3 +112,4 @@ def register_handlers(dp: Dispatcher, admin_ids):
                                 text="📄 Создать новый розыгрыш")
     dp.register_callback_query_handler(lambda callback_query: confirm_callback(callback_query, admin_ids),
                                        lambda c: c.data.startswith(('approve_', 'reject_')))
+    
