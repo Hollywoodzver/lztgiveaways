@@ -1,1 +1,1 @@
-Создатель - lolz.live/hollywood
+Создатель - https://lolz.live/hollywood
