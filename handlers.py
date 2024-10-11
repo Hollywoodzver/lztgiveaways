@@ -4,8 +4,9 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import re
 from LOLZTEAM.API import Forum, Market
-
+from config import token, secret
 import requests
+from keyboards import get_main_keyboard
 
 class Form(StatesGroup):
     waiting_for_text = State()
@@ -13,18 +14,13 @@ class Form(StatesGroup):
 
 
 
-token = "Your Forum Token"
-secret = "your secret answer"
 
 market = Market(token=token, language="en")
 forum = Forum(token=token, language="en")
 
 async def start(message: types.Message, admin_ids):
     if message.from_user.id in admin_ids:
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        buttons = ["📄 Создать новый розыгрыш"] 
-        keyboard.add(buttons[0])
-        await message.reply(f"Привет, админ!  Выберите действие:", reply_markup=keyboard)
+        await message.reply(f"Привет, админ!  Выберите действие:", reply_markup=get_main_keyboard())
 
 async def give_command(message: types.Message, admin_ids):
     if message.from_user.id in admin_ids:
