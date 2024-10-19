@@ -1,111 +1,134 @@
-from aiogram import Dispatcher, types, Bot
-from aiogram.dispatcher import FSMContext, Dispatcher
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import re
-from LOLZTEAM.API import Forum, Market
-from config import token, secret
+from aiogram.fsm.context import FSMContext
 import requests
-from keyboards import get_main_keyboard
+from LOLZTEAM.API import Forum, Market
+from aiogram import types, F, Router
+from aiogram.fsm.state import State, StatesGroup
+import asyncio
+import config
+from config import token, secret
+from keyboards import get_main_keyboard, inlinekey
+from aiogram.filters import StateFilter, CommandStart
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
+
+router=Router()
+admin_ids=config.ADMIN_IDS
+
 
 class Form(StatesGroup):
     waiting_for_text = State()
     waiting_for_second_text = State()  # Состояние для второго текста
 
-
-
-
 market = Market(token=token, language="en")
 forum = Forum(token=token, language="en")
 
-async def start(message: types.Message, admin_ids):
+@router.message(CommandStart())
+async def start(message: types.Message, state: FSMContext):
     if message.from_user.id in admin_ids:
-        await message.reply(f"Привет, админ!  Выберите действие:", reply_markup=get_main_keyboard())
+        await message.answer(f"Привет, админ!  Выберите действие:", reply_markup=get_main_keyboard())
 
-async def give_command(message: types.Message, admin_ids):
+@router.message(F.text == '📄 Создать новый розыгрыш')
+async def give_command(message: types.Message, state: FSMContext):
     if message.from_user.id in admin_ids:
+
         await message.reply("Отправьте ссылку на розыгрыш, содержание которого хотите скопировать:")
-        await Form.waiting_for_text.set() 
+        logging.info(f"Received command: from user {message.from_user.id}")
+        await state.set_state(Form.waiting_for_text)
 
+@router.message(StateFilter(Form.waiting_for_text))
 async def process_give(message: types.Message, state: FSMContext):
+    logging.info(f"Process message in waiting_for_text state: {message.text}")
+
     first_input = message.text  # Сохраняем введенный текст в переменную
-    await state.update_data(first_input=first_input)  # Сохраняем первый ввод
-    await message.reply(f"Теперь введите сумму розыгрыша, срок розыгрыша, тип срока (minutes, hours, days)\n\nПример: 555, 2, hours (Будет создан розыгрыш на 555₽, Сроком 2 часа)")
-    await Form.waiting_for_second_text.set()  # Устанавливаем состояние для второго текста
+    pattern = re.search(r'threads/(\d+)', first_input)       
+    if pattern:
+        await state.update_data(first_input=first_input)
+        first_input = message.text  # Сохраняем введенный текст в переменную
+        await state.update_data(first_input=first_input)  # Сохраняем первый ввод
+        await message.reply(f"Теперь введите сумму розыгрыша, срок розыгрыша, тип срока (minutes, hours, days)\n\nПример: 555, 2, hours (Будет создан розыгрыш на 555₽, Сроком 2 часа)")
+        await state.set_state(Form.waiting_for_second_text) # Устанавливаем состояние для второго текста
+    else:
+        await message.reply(f"Похоже, вы ввели не ссылку. Попробуйте сначала")
+        await state.clear()
 
 
+@router.message(StateFilter(Form.waiting_for_second_text))
 async def next_give(message: types.Message, state: FSMContext):
     global second_input, price, date, date2, first_input
-    second_input = message.text  # Сохраняем введенный текст в переменную
-    price = second_input.split(", ")[0]
-    date = second_input.split(", ")[-2]
-    date2 = second_input.split(", ")[-1]
-    user_data = await state.get_data()  # Получаем данные о состоянии
-    first_input = user_data.get('first_input')  # Получаем первый ввод
+    try:
+        second_input = message.text  # Сохраняем введенный текст в переменную
+        parts = [part.strip() for part in second_input.split(",")]
+        price = parts[0]
+        date = parts[-2]
+        date2 = parts[-1]
+        user_data = await state.get_data()  # Получаем данные о состоянии
+        first_input = user_data.get('first_input')  # Получаем первый ввод
 
-    await state.finish()  # Завершаем состояние
-    
-    keyboard = InlineKeyboardMarkup()
-    approve_button = InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_")
-    reject_button = InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_")
-    keyboard.add(approve_button, reject_button)
-    await message.reply(
-        f"Содержание розыгрыша: {first_input}\nprice: {price}₽\nСрок розыгрыша: {date} {date2}\nСоздавать розыгрыш?", reply_markup=keyboard
-        )
+        await state.clear()  # Завершаем состояние
+        if int(price)<500:
+            await message.reply("Сумма розыгрыша не может быть меньше 500₽\nПопробуйте снова")
+        elif date2 not in ('minutes', 'hours', 'days'):
+            await message.reply("Тип даты должен быть одним из следующего: minutes, hours, days\nПопробуйте снова.")
 
-    matc = re.search(r'threads/(\d+)', first_input)
-    if matc:
-        thread_i = matc.group(1)
-        print(f"Forum response data: {thread_i}")  # Отладочный вывод
-        url = f"https://api.zelenka.guru/threads/{thread_i}"
+        elif int(date)>3 and date2=='days':
+            await message.reply('Срок розыгрша не может быть больше, чем 3 days.')
+        else:
+            
+            await message.reply(
+                f"Содержание розыгрыша: {first_input}\nprice: {price}₽\nСрок розыгрыша: {date} {date2}\nСоздавать розыгрыш?", reply_markup=inlinekey()
+                )
 
-        headers = {"accept": "application/json",
-                   "authorization": f"Bearer {token}"}
-        response = requests.get(url, headers=headers)
-        global title1, body
-        global thread_tags
-        title1 = response.json()['thread']['thread_title']
-        body = response.json()['thread']['first_post']['post_body']
-        thread_tags = list(response.json()['thread']['thread_tags'].values())
+            matc = re.search(r'threads/(\d+)', first_input)
+            if matc:
+                thread_i = matc.group(1)
+                print(f"Forum response data: {thread_i}")  # Отладочный вывод
+                url = f"https://api.zelenka.guru/threads/{thread_i}"
+
+                headers = {"accept": "application/json",
+                        "authorization": f"Bearer {token}"}
+                response = requests.get(url, headers=headers)
+                global title1, body
+                global thread_tags
+                title1 = response.json()['thread']['thread_title']
+                body = response.json()['thread']['first_post']['post_body']
+                response_data=response.json()
+                thread_tags = response_data['thread']['thread_tags']
+
+            # Если thread_tags это словарь, то преобразуем его в список
+            if isinstance(thread_tags, dict):
+                thread_tags = list(thread_tags.values())
 
 
-async def confirm_callback(callback_query: types.CallbackQuery, admin_ids):
+            else:
+            # Если нужных ключей нет, присваиваем пустой список
+                thread_tags = []
+
+    except Exception as e:
+        await message.reply(f"Ответ сервера: {e}\nПопробуйте сначала")
+        await state.clear()
+
+@router.callback_query()
+async def confirm_callback(callback_query: types.CallbackQuery):
     action = callback_query.data
     if action == "approve_":
         try:
-            response = forum.threads.contests.money.create_by_time(post_body=body,prize_data_money=int(price), count_winners=1,
+            await asyncio.sleep(2)
+            response = response = forum.threads.contests.money.create_by_time(post_body=body,prize_data_money=int(price), count_winners=1,
                                                                 length_value=date, length_option=date2, require_like_count=1,
                                                                 require_total_like_count=50, secret_answer=secret, tags=thread_tags, title=title1)
-                                                                
-            print(response.json())
+            
             thread_id = response.json()["thread"]["links"]["permalink"]
+            print(f"Розыгрыш {thread_id} успешно создан!")
             await callback_query.message.edit_text(f"Розыгрыш успешно создан\n{thread_id}")
             if 'errors' in response.json():
                 await callback_query.message.edit_text("Ошибки в ответе:", response.json()['errors'])
-        except NameError as e:
-             await callback_query.message.edit_text(f"Убедитесь, что {first_input} - ссылка на тему")
-        except requests.exceptions.HTTPError as http_err:
-            await callback_query.message.edit_text(f"HTTP ошибка: {http_err}")
-        except requests.exceptions.RequestException as req_err:
-            await callback_query.message.edit_text(f"Ошибка запроса: {req_err}")
+   
         except Exception as err:
             await callback_query.message.edit_text(f"Произошла непредвиденная ошибка: {err}")
-        except ValueError as e:
-             await callback_query.message.edit_text(f"Сумма розыгрыша должна быть числом. Также убедитесь, что срок розыгрыша не более 3-х дней")
-        
+            
+
     if action == "reject_":
         await callback_query.message.edit_text(f"Заявка отклонена.")
-
-
-
-
-
-def register_handlers(dp: Dispatcher, admin_ids):
-    dp.register_message_handler(lambda message, state: process_give(message, state), state=Form.waiting_for_text)
-    dp.register_message_handler(lambda message, state: next_give(message, state), state=Form.waiting_for_second_text)
-    dp.register_message_handler(lambda message: start(message, admin_ids), commands="start", state="*")
-    dp.register_message_handler(lambda message: give_command(message, admin_ids),
-                                text="📄 Создать новый розыгрыш")
-    dp.register_callback_query_handler(lambda callback_query: confirm_callback(callback_query, admin_ids),
-                                       lambda c: c.data.startswith(('approve_', 'reject_')))
-    
