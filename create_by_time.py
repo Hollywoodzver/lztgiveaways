@@ -11,7 +11,7 @@ from config import token, secret
 from LOLZTEAM.API import Forum, Market
 from keyboards import get_main_keyboard, get_time_keyboard
 import config
-
+ 
 admin_ids=config.ADMIN_IDS
 router_two=Router()
 market = Market(token=token, language="en")
@@ -135,9 +135,9 @@ async def get_other(message: types.Message, state: FSMContext):
         print(str(e))
         await state.clear()
 
-@router_two.message(F.text == 'Да, создавать')
+@router_two.message(F.text == 'Да, создать')
 # Создание розыгрыша и его повторение
-async def da(message: types.Message, user_id=None, state=FSMContext):
+async def da(message: types.Message):
     # Получаем данные для розыгрыша
    
     try:
