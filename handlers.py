@@ -26,7 +26,7 @@ market = Market(token=token, language="en")
 forum = Forum(token=token, language="en")
 
 @router.message(CommandStart())
-async def start(message: types.Message, state: FSMContext):
+async def start(message: types.Message):
     if message.from_user.id in admin_ids:
         await message.answer(f"Привет, админ!  Выберите действие:", reply_markup=get_main_keyboard())
 
@@ -74,7 +74,7 @@ async def next_give(message: types.Message, state: FSMContext):
             await message.reply("Тип даты должен быть одним из следующего: minutes, hours, days\nПопробуйте снова.")
 
         elif int(date)>3 and date2=='days':
-            await message.reply('Срок розыгрша не может быть больше, чем 3 days.')
+            await message.reply('Срок розыгрыша не может быть больше, чем 3 days.')
         else:
             
             await message.reply(
@@ -116,19 +116,19 @@ async def confirm_callback(callback_query: types.CallbackQuery):
     if action == "approve_":
         try:
             await asyncio.sleep(2)
-            response = response = forum.threads.contests.money.create_by_time(post_body=body,prize_data_money=int(price), count_winners=1,
-                                                                length_value=date, length_option=date2, require_like_count=1,
-                                                                require_total_like_count=50, secret_answer=secret, tags=thread_tags, title=title1)
+            response = forum.threads.contests.money.create_by_time(post_body=body,prize_data_money=int(price), count_winners=1,
+                                                                   length_value=date, length_option=date2, require_like_count=1,
+                                                                    require_total_like_count=50, secret_answer=secret, tags=thread_tags, title=title1)
+            print(response.json())
             
+
             thread_id = response.json()["thread"]["links"]["permalink"]
             print(f"Розыгрыш {thread_id} успешно создан!")
             await callback_query.message.edit_text(f"Розыгрыш успешно создан\n{thread_id}")
+        except Exception as e:
+            await callback_query.message.edit_text(f'Произошла ошибка {e}')
             if 'errors' in response.json():
                 await callback_query.message.edit_text("Ошибки в ответе:", response.json()['errors'])
-   
-        except Exception as err:
-            await callback_query.message.edit_text(f"Произошла непредвиденная ошибка: {err}")
-            
 
     if action == "reject_":
         await callback_query.message.edit_text(f"Заявка отклонена.")
