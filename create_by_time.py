@@ -1,17 +1,17 @@
+import asyncio
 import re
-from aiogram.fsm.context import FSMContext
+
 import requests
 from LOLZTEAM.API import Forum, Market
 from aiogram import types, F, Router
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter, Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
-import asyncio
-from config import token, secret
-from LOLZTEAM.API import Forum, Market
-from keyboards import get_main_keyboard, get_time_keyboard
 import config
- 
+from config import token, secret
+from keyboards import get_main_keyboard, get_time_keyboard
+
 admin_ids=config.ADMIN_IDS
 router_two=Router()
 market = Market(token=token, language="en")
@@ -77,10 +77,10 @@ async def get_other(message: types.Message, state: FSMContext):
             await message.reply("Тип даты должен быть одним из следующего: minutes, hours, days\nПопробуйте снова.")
 
         elif int(dateX)>3 and dateY=='days':
-            await message.reply('Срок розыгрша не может быть больше, чем 3 days.')
+            await message.reply('Срок розыгрыша не может быть больше, чем 3 days.')
         else:
             # Сохраняем данные в FSMContext
-            user_data = await state.get_data()
+            await state.get_data()
        # Продолжаем диалог с пользователем
             await message.reply(
                 f"Содержание розыгрыша: {link}\nprice: {price}₽\nСрок: {dateX} {dateY}\nСоздавать?",
@@ -102,7 +102,7 @@ async def get_other(message: types.Message, state: FSMContext):
 
             if response.status_code != 200:
                 await message.reply(f"Ошибка при запросе к API: {response.status_code}", reply_markup=get_main_keyboard())
-                await state.finish
+                await state.clear()
                 
                 return
 
@@ -126,7 +126,7 @@ async def get_other(message: types.Message, state: FSMContext):
     except requests.exceptions.RequestException as req_err:
         await message.reply(f"Ошибка при выполнении запроса: {req_err}")
         print(req_err)
-        await state.finish()
+        await state.clear()
     except ValueError as val_err:
         await message.reply(f"Ошибка при обработке данных: {val_err}")
         print(val_err)
@@ -139,19 +139,19 @@ async def get_other(message: types.Message, state: FSMContext):
 # Создание розыгрыша и его повторение
 async def da(message: types.Message):
     # Получаем данные для розыгрыша
-   
+
     try:
         await asyncio.sleep(2)
         print(price, body, dateX, dateY, title, tags )
-        response = response = forum.threads.contests.money.create_by_time(
+        response = forum.threads.contests.money.create_by_time(
             post_body=body, prize_data_money=price,
             count_winners=1, length_value=dateX, length_option=dateY,
             require_like_count=1, require_total_like_count=50, secret_answer=secret,
-            tags=tags, title=title
-            )
- 
+            tags=tags, title=title)
+
         thread_id = response.json()["thread"]["links"]["permalink"]
-        await message.reply(f"Розыгрыш успешно создан\n{thread_id}", reply_markup=get_main_keyboard())
+        print(f"Розыгрыш {thread_id} успешно создан!")
+        await message.reply(f"Розыгрыш успешно создан\n{thread_id}")
         await schedule_repeating_da(message, admin_ids)
     except Exception as e:
         if 'errors' in response.json():
@@ -180,11 +180,14 @@ async def schedule_repeating_da(message: types.Message, admin_ids):
     # Создаем новую повторяющуюся задачу
     task = asyncio.create_task(repeat_da_command(message, admin_ids))
     tasks[user_id] = task
-    await message.reply(f"Команда будет повторяться каждые {interval_days} дня(ей).", reply_markup=get_main_keyboard())
+    await message.reply(f"Команда будет повторяться каждые {interval_days} дня(ей).\nОтменить задачу - /cancel", reply_markup=get_main_keyboard())
 
+@router_two.message(F.text == 'Нет')
+async def net(message: types.Message):
+    await message.reply("Создание розыгрыша отменено", reply_markup=get_main_keyboard())
 
 # Отмена повторяющейся задачи
-@router_two.message(Command('/cancel'))
+@router_two.message(Command('cancel'))
 async def cancel_repeating_da(message: types.Message):
     user_id = message.from_user.id
 
@@ -199,6 +202,12 @@ async def cancel_repeating_da(message: types.Message):
     else:
         await message.reply("Нет активных задач для остановки.", reply_markup=get_main_keyboard())
 
-@router_two.message(F.text == 'Нет')
-async def net(message: types.Message, admin_ids):
-    await message.reply("Создание розыгрыша отменено", reply_markup=get_main_keyboard())
+@router_two.message(Command('active'))
+async def cancel_repeating_da(message: types.Message):
+    user_id = message.from_user.id
+
+    if user_id in tasks:
+        task = tasks[user_id]
+        print(task)
+        await message.answer(str(task))
+
