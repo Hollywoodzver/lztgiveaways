@@ -1,4 +1,5 @@
 import asyncio
+import math
 import re
 
 import requests
@@ -141,12 +142,17 @@ async def da(message: types.Message):
     # Получаем данные для розыгрыша
 
     try:
+        like = math.floor(int(price)/10)
+        if like<200:
+            like=200
+        if like>4000:
+            like=4000
         await asyncio.sleep(2)
         print(price, body, dateX, dateY, title, tags )
         response = forum.threads.contests.money.create_by_time(
             post_body=body, prize_data_money=price,
             count_winners=1, length_value=dateX, length_option=dateY,
-            require_like_count=1, require_total_like_count=50, secret_answer=secret,
+            require_like_count=1, require_total_like_count=like, secret_answer=secret,
             tags=tags, title=title)
 
         thread_id = response.json()["thread"]["links"]["permalink"]
