@@ -1,17 +1,18 @@
+import asyncio
+import math
 import re
-from aiogram.fsm.context import FSMContext
+
 import requests
 from LOLZTEAM.API import Forum, Market
 from aiogram import types, F, Router
+from aiogram.filters import StateFilter
+from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import StateFilter, Command
-import math
-import asyncio
-from config import token, secret
-from LOLZTEAM.API import Forum, Market
-from keyboards import get_main_keyboard, get_time1_keyboard
+
 import config
- 
+from config import token, secret
+from keyboards import get_main_keyboard, get_time1_keyboard
+
 admin_ids=config.ADMIN_IDS
 ml=Router()
 market = Market(token=token, language="en")
@@ -41,7 +42,7 @@ async def count(message: types.Message, state: FSMContext):
         count_give = int(message.text)
         await state.update_data(count_give=count_give)
 
-        await message.reply(f"Колиство розыгрышей - {count_give}\nОтправьте ссылку на тему, откуда скопируется информация:")
+        await message.reply(f"Количество розыгрышей - {count_give}\nОтправьте ссылку на тему, откуда скопируется информация:")
         await state.set_state(Form.waiting_for_link1)
     except ValueError:
         await message.answer("Введите число")
@@ -77,8 +78,10 @@ async def other(message: types.Message, state: FSMContext):
             await message.reply("Срок розыгрша не может быть больше, чем 3 days.\nПопробуйте снова.")
         else:
             like_count=math.floor(int(price)/10)
-            if like_count>2000:
-                like_count=2000
+            if like_count>4000:
+                like_count=4000
+            if like_count<200:
+                like_count=200
             await message.reply(
                 f"Количество розыгрышей: {count_give}\nСодержание розыгрыша: {link}\nprice: {price}₽\nСрок: {dateX} {dateY}\nНеобходимо симпатий для участия: {like_count}\nСоздавать(действие нельзя отменить)?",
                 reply_markup=get_time1_keyboard()
@@ -123,7 +126,7 @@ async def other(message: types.Message, state: FSMContext):
     except requests.exceptions.RequestException as req_err:
         await message.reply(f"Ошибка при выполнении запроса: {req_err}")
         print(req_err)
-        await state.finish()
+        await state.clear()
     except ValueError as val_err:
         await message.reply(f"Ошибка при обработке данных: {val_err}")
         print(val_err)
@@ -142,12 +145,11 @@ async def da1(message: types.Message):
             count += 1
             await asyncio.sleep(62)
             print(f"Цена: {price},\nСрок: {dateX, dateY},\nЗаголовок: {title},\nТеги: {tags}")
-            response = forum.threads.contests.money.create_by_time(
-                post_body=body, prize_data_money=price,
-                count_winners=1, length_value=dateX, length_option=dateY,
-                require_like_count=1, require_total_like_count=50, secret_answer=secret,
-                tags=tags, title=title
-                )
+            response = response = forum.threads.contests.money.create_by_time(
+            post_body=body, prize_data_money=price,
+            count_winners=1, length_value=dateX, length_option=dateY,
+            require_like_count=1, require_total_like_count=50, secret_answer=secret,
+            tags=tags, title=title)
             
             # Проверяем ответ
             if response:
@@ -170,5 +172,3 @@ async def da1(message: types.Message):
 @ml.message(F.text == "Отмена")
 async def net0(message: types.Message):
     await message.reply("Создание розыгрышей отменено", reply_markup=get_main_keyboard())
-
-   
