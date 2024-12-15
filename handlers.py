@@ -1,3 +1,4 @@
+import math
 import re
 from aiogram.fsm.context import FSMContext
 import requests
@@ -116,9 +117,14 @@ async def confirm_callback(callback_query: types.CallbackQuery):
     if action == "approve_":
         try:
             await asyncio.sleep(2)
+            like = math.floor(int(price)/10)
+            if like<200:
+                like=200
+            if like>4000:
+                like=4000
             response = forum.threads.contests.money.create_by_time(post_body=body,prize_data_money=int(price), count_winners=1,
                                                                    length_value=date, length_option=date2, require_like_count=1,
-                                                                    require_total_like_count=50, secret_answer=secret, tags=thread_tags, title=title1)
+                                                                    require_total_like_count=4000, secret_answer=secret, tags=thread_tags, title=title1)
             print(response.json())
             
 
