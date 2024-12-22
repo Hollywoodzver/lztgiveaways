@@ -8,6 +8,7 @@ import config
 from handlers import router
 from create_by_time import router_two
 from mass_creation import ml
+from createfrombb import r
 
 logging.basicConfig(level=logging.INFO)
 
@@ -19,6 +20,7 @@ dp = Dispatcher(storage=storage)
 dp.include_router(router)
 dp.include_router(router_two)
 dp.include_router(ml)
+dp.include_router(r)
 async def main():
     # Запуск polling
     await dp.start_polling(bot, skip_updates=True)
