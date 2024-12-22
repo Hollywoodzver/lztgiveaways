@@ -11,7 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 import config
 from config import token, secret
-from keyboards import get_main_keyboard, get_time_keyboard
+from keyboards import cbtkey
 
 admin_ids=config.ADMIN_IDS
 router_two=Router()
@@ -38,7 +38,7 @@ async def start_repeat_command(message: types.Message, state: FSMContext):
 @router_two.message(StateFilter(RepeatForm.waiting_for_interval))
 async def process_repeat_interval(message: types.Message, state: FSMContext):
     try:
-        global interval_days
+
         interval_days = int(message.text)
         await state.update_data(interval_days=interval_days)
 
@@ -50,13 +50,11 @@ async def process_repeat_interval(message: types.Message, state: FSMContext):
 
 @router_two.message(StateFilter(Form.waiting_for_link))
 async def get_link(message: types.Message, state: FSMContext):
-    global link
     link = message.text
     pattern = re.search(r'threads/(\d+)', link)
-    
     if pattern:
         await state.update_data(link=link)
-        await message.reply(f"Введите сумму розыгрыша и срок:\nПример: 555, 2, hours")
+        await message.reply(f"Введите сумму розыгрыша, срок розыгрыша, тип срока (minutes, hours, days)\nПример: 555, 2, hours")
         await state.set_state(Form.waiting_for_other)
     else:
         await message.reply("Похоже, вы ввели не ссылку")
@@ -64,30 +62,28 @@ async def get_link(message: types.Message, state: FSMContext):
 
 @router_two.message(StateFilter(Form.waiting_for_other))
 async def get_other(message: types.Message, state: FSMContext):
-    global dateX, dateY
     try:
         other = message.text  # Получаем текст от пользователя
         parts = [part.strip() for part in other.split(",")]
-
-        global price
         price, dateX, dateY = parts  # Распаковываем части
-        await state.clear()  # Завершаем состояние
         if int(price)<500:
             await message.reply("Сумма розыгрыша не может быть меньше 500₽\nПопробуйте снова")
+            await state.clear()
         elif dateY not in ('minutes', 'hours', 'days'):
             await message.reply("Тип даты должен быть одним из следующего: minutes, hours, days\nПопробуйте снова.")
-
+            await state.clear()
         elif int(dateX)>3 and dateY=='days':
             await message.reply('Срок розыгрыша не может быть больше, чем 3 days.')
+            await state.clear()
         else:
-            # Сохраняем данные в FSMContext
-            await state.get_data()
-       # Продолжаем диалог с пользователем
+            await state.update_data(price=price, dateX=dateX, dateY=dateY)
+            user_data = await state.get_data()
+            link = user_data.get('link')
             await message.reply(
                 f"Содержание розыгрыша: {link}\nprice: {price}₽\nСрок: {dateX} {dateY}\nСоздавать?",
-                reply_markup=get_time_keyboard()
+                reply_markup=cbtkey()
             )
-
+            
             # Извлекаем ID темы из ссылки
             match = re.search(r'threads/(\d+)', link)
             if not match:
@@ -102,72 +98,79 @@ async def get_other(message: types.Message, state: FSMContext):
             response = requests.get(url, headers=headers)
 
             if response.status_code != 200:
-                await message.reply(f"Ошибка при запросе к API: {response.status_code}", reply_markup=get_main_keyboard())
+                await message.reply(f"Ошибка при запросе к API: {response.status_code}")
                 await state.clear()
                 
                 return
 
             # Проверяем наличие нужных данных в ответе
-            json_data = response.json()
-
-            global body, title
+            json_data = response.json()       
             # Извлекаем информацию о теме
             title = json_data['thread']['thread_title']
             body = json_data['thread']['first_post']['post_body']
+            await state.update_data(title=title, body=body)
 
             # Проверяем структуру thread_tags
             thread_tags = json_data['thread']['thread_tags']
-            global tags
             if isinstance(thread_tags, dict):
                 tags = list(thread_tags.values())  # Если это список, просто используем его напрямую
             else:
                 tags = []  # Если нет тегов, используем пустой список
-
-            await state.clear()
+            await state.update_data(tags=tags)
     except requests.exceptions.RequestException as req_err:
         await message.reply(f"Ошибка при выполнении запроса: {req_err}")
         print(req_err)
         await state.clear()
     except ValueError as val_err:
         await message.reply(f"Ошибка при обработке данных: {val_err}")
-        print(val_err)
+        await state.clear()
     except Exception as e:
         await message.reply(f"Произошла ошибка: {str(e)}")
         print(str(e))
         await state.clear()
 
-@router_two.message(F.text == 'Да, создать')
+@router_two.callback_query(F.data.in_({'cbtapprove_', 'cbtreject_'}))
 # Создание розыгрыша и его повторение
-async def da(message: types.Message):
+async def da(callback_query: types.CallbackQuery, state: FSMContext):
     # Получаем данные для розыгрыша
-
-    try:
-        like = math.floor(int(price)/10)
-        if like<200:
-            like=200
-        if like>4000:
-            like=4000
-        await asyncio.sleep(2)
-        print(price, body, dateX, dateY, title, tags )
-        response = forum.threads.contests.money.create_by_time(
-            post_body=body, prize_data_money=price,
-            count_winners=1, length_value=dateX, length_option=dateY,
-            require_like_count=1, require_total_like_count=like, secret_answer=secret,
-            tags=tags, title=title)
-
-        thread_id = response.json()["thread"]["links"]["permalink"]
-        print(f"Розыгрыш {thread_id} успешно создан!")
-        await message.reply(f"Розыгрыш успешно создан\n{thread_id}")
-        await schedule_repeating_da(message, admin_ids)
-    except Exception as e:
-        if 'errors' in response.json():
-            await message.reply(response.json()['errors'], reply_markup=get_main_keyboard())
-        else:
-            await message.reply(f"Произошла ошибка: {e}", reply_markup=get_main_keyboard())
+    action = callback_query.data
+    user_data = await state.get_data()
+    title = user_data.get('title')
+    body = user_data.get('body')
+    price = user_data.get('price')
+    dateX = user_data.get('dateX')
+    dateY = user_data.get('dateY')
+    tags = user_data.get('tags')
+    if action=='cbtapprove_':
+        try:
+            price = int(price)
+            like_count = max(200, min(math.floor(price/10), 4000))
+            await asyncio.sleep(2)
+            print(price, body, dateX, dateY, title, tags )
+            response = forum.threads.contests.money.create_by_time(
+                post_body=body, prize_data_money=price,
+                count_winners=1, length_value=dateX, length_option=dateY,
+                require_like_count=1, require_total_like_count=like_count, secret_answer=secret,
+                tags=tags, title=title)
+            response_data = response.json()
+            if 'errors' in response_data:
+                error = '\n'.join(response_data['errors'])
+                await callback_query.message.edit_text(f'Произошла ошибка:\n{error}')
+            else:
+                thread_id = response.json()["thread"]["links"]["permalink"]
+                print(f"Розыгрыш {thread_id} успешно создан!")
+                await callback_query.message.edit_text(f"Розыгрыш успешно создан\n{thread_id}")
+                await schedule_repeating_da(admin_ids)          
+        except Exception as e:
+            await callback_query.message.edit_text(f"Произошла ошибка: {e}")
+    elif action=='cbtreject_':
+        await callback_query.message.edit_text("Создание розыгрыша отменено")
 
 # Повторяющаяся задача для выполнения команды через X дней
-async def repeat_da_command(message, admin_ids):
+async def repeat_da_command(message, admin_ids, state: FSMContext):
     try:
+        user_data = await state.get_data()
+        interval_days = user_data.get('interval_days')
         user_id = message.from_user.id
         while True:
             await asyncio.sleep(interval_days * 86400)  # Интервал в днях
@@ -176,21 +179,21 @@ async def repeat_da_command(message, admin_ids):
         await message.reply("Повторение команды остановлено.")
         return
     except Exception as e:
-        await message.reply(f"Произошла ошибка: {e}", reply_markup=get_main_keyboard())
+        await message.reply(f"Произошла ошибка: {e}")
 
 # Планирование повторяющейся задачи
-async def schedule_repeating_da(message: types.Message, admin_ids):
+async def schedule_repeating_da(message: types.Message, admin_ids, state: FSMContext):
     user_id = message.from_user.id
-
-
+    user_data = await state.get_data()
+    interval_days = user_data.get('interval_days')
     # Создаем новую повторяющуюся задачу
     task = asyncio.create_task(repeat_da_command(message, admin_ids))
     tasks[user_id] = task
-    await message.reply(f"Команда будет повторяться каждые {interval_days} дня(ей).\nОтменить задачу - /cancel", reply_markup=get_main_keyboard())
+    await message.reply(f"Команда будет повторяться каждые {interval_days} дня(ей).\nОтменить задачу - /cancel")
 
 @router_two.message(F.text == 'Нет')
 async def net(message: types.Message):
-    await message.reply("Создание розыгрыша отменено", reply_markup=get_main_keyboard())
+    await message.reply("Создание розыгрыша отменено")
 
 # Отмена повторяющейся задачи
 @router_two.message(Command('cancel'))
@@ -202,11 +205,11 @@ async def cancel_repeating_da(message: types.Message):
         print(task)
         if not task.done():
             task.cancel()  # Отменяем задачу
-            await message.reply("Повторение команды успешно остановлено.",reply_markup=get_main_keyboard())
+            await message.reply("Повторение команды успешно остановлено.")
         else:
-            await message.reply("Задача уже завершена.", reply_markup=get_main_keyboard())
+            await message.reply("Задача уже завершена.")
     else:
-        await message.reply("Нет активных задач для остановки.", reply_markup=get_main_keyboard())
+        await message.reply("Нет активных задач для остановки.")
 
 @router_two.message(Command('active'))
 async def cancel_repeating_da(message: types.Message):
