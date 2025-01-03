@@ -8,6 +8,7 @@ def get_main_keyboard():
     keyboard.add(KeyboardButton(text="📄 Создавать розыгрыш каждые X дней"))
     keyboard.add(KeyboardButton(text="📄 Создать несколько розыгрышей"))
     keyboard.add(KeyboardButton(text="📄 Создать из bb-code"))
+    keyboard.add(KeyboardButton(text="❓ Последние розыгрыши"))
     keyboard.adjust(2)
     return keyboard.as_markup(resize_keyboard=True)
 
