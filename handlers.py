@@ -3,17 +3,18 @@ import re
 from aiogram.fsm.context import FSMContext
 import requests
 from LOLZTEAM.API import Forum, Market
-from aiogram import types, F, Router
+from aiogram import Bot, types, F, Router
 from aiogram.fsm.state import State, StatesGroup
 import asyncio
 import config
 from config import token, secret
-from keyboards import get_main_keyboard, inlinekey
+from keyboards import get_main_keyboard, inlinekey, updkey
 from aiogram.filters import StateFilter, CommandStart
 import logging
 import datetime
 import pytz
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from aiogram.enums import ParseMode
 
 
 
@@ -155,27 +156,66 @@ async def confirm_callback(callback_query: types.CallbackQuery, state: FSMContex
 async def giveaways_list(message: types.Message, state: FSMContext):
     
 
-    response = forum.threads.list(forum_id=766, limit=3, order='thread_create_date_reverse')
+    response = forum.threads.list(forum_id=766, limit=5, order='thread_create_date_reverse')
     threads = response.json()['threads']
+    messages = []
     for thread in threads:
-
         count = thread['first_post']['post_like_count']
-    
-        
-
-        
         timezone = pytz.timezone('Europe/Moscow')
         now = datetime.now(timezone)
         timestamp = thread['thread_create_date']
         llink = thread['links']['permalink']
         date_time = datetime.fromtimestamp(timestamp, tz=timezone)
-        # Вычисление разницы
-        time_difference = now - date_time
-        print(now)
+        
 
-        # Получение разницы в минутах
+        time_difference = now - date_time
+      
         minutes_ago = time_difference.total_seconds() / 60
-        time = f"Дата создания - {date_time.strftime('%Y-%m-%d %H:%M:%S')}({math.floor(minutes_ago)} мин. назад), Количество симпатий - {count}\nСсылка: {llink}"
-        # Вывод в читаемом формате
-        print(f"Дата создания - {date_time.strftime('%Y-%m-%d %H:%M:%S')}, Количество симпатий - {count}")  # Пример: '2025-08-02 12:11:42'
-        await message.answer(time, disable_web_page_preview=True)
+        msg_text = (
+            f"Дата создания: {date_time.strftime('%H:%M:%S')} "
+            f"<b>({math.floor(minutes_ago)} мин. назад)</b>\n"
+            f"Количество симпатий: {count}\n"
+            f"Ссылка: {llink}\n"
+        )
+        messages.append(msg_text)
+        final_msg = "\n\n".join(messages)
+    await message.answer(final_msg, parse_mode=ParseMode.HTML, disable_web_page_preview=True, reply_markup=updkey())
+
+
+
+@router.callback_query(F.data.in_({'update'}))
+async def update(callback_query: types.CallbackQuery):
+    action = callback_query.data
+    if action=='update':
+        response = forum.threads.list(forum_id=766, limit=5, order='thread_create_date_reverse')
+    threads = response.json()['threads']
+    messages = []
+    for thread in threads:
+        count = thread['first_post']['post_like_count']
+        timezone = pytz.timezone('Europe/Moscow')
+        now = datetime.now(timezone)
+        timestamp = thread['thread_create_date']
+        llink = thread['links']['permalink']
+        date_time = datetime.fromtimestamp(timestamp, tz=timezone)
+        
+        time_difference = now - date_time
+      
+        minutes_ago = time_difference.total_seconds() / 60
+        msg_text = (           
+            f"Дата создания: {date_time.strftime('%H:%M:%S')} "
+            f"<b>({math.floor(minutes_ago)} мин. назад)</b>\n"
+            f"Количество симпатий: {count}\n"
+            f"Ссылка: {llink}\n"
+        )
+        messages.append(msg_text)
+        final_msg = "\n\n".join(messages)
+   # Удаление старого сообщения и редактирование текста
+    await callback_query.message.edit_text(
+        text=f"{final_msg}\n\nДата обновления: {now.strftime('%H:%M:%S')}",
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+        reply_markup=updkey()  # Функция updkey() для inline-клавиатуры
+    )
+    
+    # Уведомление пользователя
+    await callback_query.answer("🔄 Обновлено", show_alert=False)
