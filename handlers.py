@@ -11,6 +11,11 @@ from config import token, secret
 from keyboards import get_main_keyboard, inlinekey
 from aiogram.filters import StateFilter, CommandStart
 import logging
+import datetime
+import pytz
+from datetime import datetime, timezone, timedelta
+
+
 
 
 logging.basicConfig(level=logging.INFO)
@@ -145,3 +150,32 @@ async def confirm_callback(callback_query: types.CallbackQuery, state: FSMContex
     if action == "reject_":
         await callback_query.message.edit_text(f"Заявка отклонена.")
         await state.clear()
+
+@router.message(F.text=="❓ Последние розыгрыши")
+async def giveaways_list(message: types.Message, state: FSMContext):
+    
+
+    response = forum.threads.list(forum_id=766, limit=3, order='thread_create_date_reverse')
+    threads = response.json()['threads']
+    for thread in threads:
+
+        count = thread['first_post']['post_like_count']
+    
+        
+
+        
+        timezone = pytz.timezone('Europe/Moscow')
+        now = datetime.now(timezone)
+        timestamp = thread['thread_create_date']
+        llink = thread['links']['permalink']
+        date_time = datetime.fromtimestamp(timestamp, tz=timezone)
+        # Вычисление разницы
+        time_difference = now - date_time
+        print(now)
+
+        # Получение разницы в минутах
+        minutes_ago = time_difference.total_seconds() / 60
+        time = f"Дата создания - {date_time.strftime('%Y-%m-%d %H:%M:%S')}({math.floor(minutes_ago)} мин. назад), Количество симпатий - {count}\nСсылка: {llink}"
+        # Вывод в читаемом формате
+        print(f"Дата создания - {date_time.strftime('%Y-%m-%d %H:%M:%S')}, Количество симпатий - {count}")  # Пример: '2025-08-02 12:11:42'
+        await message.answer(time, disable_web_page_preview=True)
